@@ -1,0 +1,585 @@
+---
+title: "transcriptomics data"
+subtitle: "__tcga dataset__"
+author: "_umahajan_"
+date:  "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+chooseCRANmirror(graphics=TRUE, ind=1)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=85),tidy=TRUE, echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+# load packages and datasets
+```{r packages, results="hide"}
+rm(list = ls())
+
+# load packages -----------------------------------------------------------
+scriptLibraries <-  c(
+  "here",
+  "dplyr",
+  "tidyr",
+  "ggplot2",
+  "ggrepel",
+  "openxlsx",
+  "RColorBrewer",
+  "ggpubr",
+  "sjPlot",
+  "scales",
+  "forcats",
+  "TCGAbiolinks",
+  "pheatmap",
+  "DT",
+  "DESeq2",
+  "clusterProfiler", 
+  "org.Hs.eg.db", 
+  "DOSE", 
+  "ReactomePA", 
+  "GOstats", 
+  "genefilter", 
+  "topGO", 
+  "KEGG.db", 
+  "fgsea", 
+  "GSVA",
+  "KEGGREST",
+  "survminer",
+  "survival",
+  "knitr",
+  "GEOquery"
+)
+# scripts --------------------------------------------------------------
+source("../functions/ImputeTransformScale.R")
+source("../functions/basicFunctions.R")
+# load packages -------------------------------------------------------
+installScriptLibs(scriptLibraries)
+# basic theme  --------------------------------------------------------
+ggplot_theme <- theme_classic() +
+  theme(
+    axis.line = element_line(size = 0.75),
+    axis.text = element_text(
+      size = 11,
+      face = "bold",
+      colour = "black"
+    ),
+    axis.title = element_text(size = 12, face = "bold")
+  )
+# set working directory ---------------------------------------------------
+here::here()
+```
+
+# TCGA data download
+```{r data}
+# query TCGA PAAD
+# Aligned against Hg19
+query.exp.hg19 <- GDCquery(project = "TCGA-PAAD",
+                  data.category = "Gene expression",
+                  data.type = "Gene expression quantification",
+                  platform = "Illumina HiSeq", 
+                  file.type  = "normalized_results",
+                  experimental.strategy = "RNA-Seq",
+                  legacy = TRUE)
+# Download 
+GDCdownload(query.exp.hg19)
+# prepare dataset
+data <- GDCprepare(query.exp.hg19)
+```
+
+## Genes of interest
+```{r goi coag 16515}
+## go terms associated with terms
+modules2terms <- c("04977", 
+                   "04714",
+                   "04071",
+                   "00600",
+                   "04723",
+                   "04923",
+                   "04722",
+                   "04217",
+                   "01100",
+                   "04931",
+                   "00561",
+                   "00564",
+                   "04975",
+                   "04979",
+                   "04920")
+# keggPath2genes function
+keggPath2genes <- function (Organism = "hsa", Path = Path, Output) {
+  pathways <- paste0(Organism, Path)
+  genes <- c()
+  PathwayMap <- c()
+  for (i in seq_along(pathways)) {
+    pathway <- pathways[i]
+    names <- try(keggGet(pathway)[[1]]$GENE, 
+                 silent = TRUE)
+    ## associated pathway
+    Pathways <- try(keggGet(pathway)[[1]]$PATHWAY_MAP, 
+                 silent = TRUE)
+    ## unname
+    Pathways <- try(unname(Pathways), silent = TRUE)
+    # delete the gene number 
+    namesodd <-  try(names[seq(0,length(names),2)], 
+                 silent = TRUE)
+    ## create substring
+    namestrue <- try(gsub("\\;.*","",namesodd), 
+                 silent = TRUE)
+    ## append 
+    genes <- try(append(genes, namestrue), 
+                 silent = TRUE)
+    PathwayMap <- try(append(PathwayMap, Pathways), 
+                 silent = TRUE)
+  }
+  genes <- unique(genes)
+  if (Output == "genes") {
+  return(genes)
+  }
+  else if (Output == "pathway_map")
+    return(PathwayMap)
+}
+## extract genes
+genes <- keggPath2genes(Organism = "hsa", Path = modules2terms, Output = "genes")
+## print list
+banner("Genes associated with modules")
+genes <- genes[!genes %in% "putative aquaporin-7-like protein 3 [KO:K08771]"]
+genes
+```
+
+## define subtypes
+```{r subtypes}
+## subtypes and metadata
+pdac.subtype <- TCGAquery_subtype(tumor = "paad")
+## tcga dataset
+tcgaDESeq <- assays(data)@listData[["normalized_count"]]
+## subset data by genes
+tcgaSubset <- tcgaDESeq[rownames(tcgaDESeq) %in% genes,]
+## delete rows with duplicate names
+tcgaSubset <- tcgaSubset[unique(rownames(tcgaSubset)),]
+## format column names
+n = 4
+pat <- paste0('^([^-]+(?:-[^-]+){',n-1,'}).*')
+colnames(tcgaSubset) <- sub(pat, "\\1", colnames(tcgaSubset))
+## subset data by pheno data
+tcgaSubset <- tcgaSubset[, colnames(tcgaSubset) %in% pdac.subtype$`Tumor Sample ID`]
+## save data
+write.csv(tcgaDESeq, "../results/tcgaDESeq.csv")
+```
+
+# ssGSEA
+```{r ssgsea}
+pathways <- readRDS("../Data/Hs.c2.cp.kegg.v7.1.entrez.rds")
+## format tcga dataset
+tcgaSubset <- data.frame(tcgaSubset)
+## row names to entrez
+tcgaSubset$Entrez <- mapIds(org.Hs.eg.db, keys= rownames(tcgaSubset), column='ENTREZID', keytype = 'SYMBOL')
+rownames(tcgaSubset) <- tcgaSubset$Entrez
+tcgaSubset <- tcgaSubset[, !colnames(tcgaSubset) %in% "Entrez"]
+## create expression dataset
+exprs <- ExpressionSet(data.matrix(tcgaSubset))
+## crearte gsva matrix
+gsva <- gsva(exprs, pathways)
+## assign expression 
+ssgsea <- exprs(gsva)
+## subset gsea data for all kegg terms 
+pathwayMap <- keggPath2genes(Organism = "hsa", Path = modules2terms, Output = "pathway_map")
+pathwayMap <- gsub(" ", "_", pathwayMap)
+### subset ssgsea by PathwayMap
+ssgseaSubset <- ssgsea[grepl(paste0(toupper(c(pathwayMap)), collapse = "|"), rownames(ssgsea)),]
+## define pheatmap clusters
+cluster_size <- 3
+## basic heatmap
+heatmap.px <- pheatmap(
+  ssgseaSubset,
+  scale = "row",
+  kmean_k = cluster_size,
+  cluster_rows = FALSE,
+  cluster_cols = TRUE,
+  silent = TRUE
+)
+## annotation_columns 
+cluster <-
+  cbind(heatmap.px, cluster = cutree(heatmap.px$tree_col, k = cluster_size))
+cluster <- as.data.frame(unlist(cluster[, 2]))
+colnames(cluster) <- c("Pseudoclusters")
+cluster$Pseudoclusters <- sub("^", "Cluster", cluster$Pseudoclusters)
+## add clusters to phenodata
+pdac.subtype <- pdac.subtype %>%
+  tibble::column_to_rownames("Tumor Sample ID")
+rownames(pdac.subtype) <- gsub("-", ".", rownames(pdac.subtype))
+pData <- merge(pdac.subtype, cluster, by=0, all=TRUE)
+## format pData
+pData <- pData %>%
+  tibble::column_to_rownames("Row.names")
+## column annotations
+cluster <- as.data.frame(cbind(
+  cluster = pData$Pseudoclusters,
+  Gender = pData$Gender,
+  KRAS = pData$`KRAS Mutated (1 or 0)`,
+  RPPA = sort(pData$`RPPA Clusters (All 150 Samples)`),
+  lnRNA = sort(pData$`lncRNA Clusters (All 150 Samples)`),
+  miRNA = sort(pData$`miRNA Clusters (All 150 Samples)`),
+  CNV = sort(pData$`Copy Number Clusters (All 150 Samples)`),
+  Methylation = sort(pData$`Methylation Clusters (All 150 Samples)`),
+  Moffitt = sort(pData$`mRNA Moffitt clusters (All 150 Samples) 1basal  2classical`),
+  Collisson = sort(pData$`mRNA Collisson clusters (All 150 Samples) 1classical 2exocrine 3QM`),
+  Bailey = sort(pData$`mRNA Bailey Clusters (All 150 Samples) 1squamous 2immunogenic 3progenitor 4ADEX`),
+  Purity = sort(pData$`Purity Class (high or low)`)
+))
+rownames(cluster) <- rownames(pData)
+
+## annotation colors
+cluster.col <- rev(brewer.pal(length(unique(cluster$cluster)), "Set1"))
+names(cluster.col) <- unique(cluster$cluster)
+
+gender.col <- brewer.pal(length(unique(cluster$Gender)), "Paired")
+names(gender.col) <- unique(cluster$Gender)
+
+kras.col <- brewer.pal(length(unique(cluster$KRAS)), "Set2")
+names(kras.col) <- unique(cluster$KRAS)
+
+rppa.col <- brewer.pal(length(unique(cluster$RPPA)), "Set3")
+names(rppa.col) <- unique(cluster$RPPA)
+
+lnrna.col <- brewer.pal(length(unique(cluster$lnRNA)), "Accent")
+names(lnrna.col) <- unique(cluster$lnRNA)
+
+mirna.col <- brewer.pal(length(unique(cluster$miRNA)), "Pastel1")
+names(mirna.col) <- unique(cluster$miRNA)
+
+cnv.col <- brewer.pal(length(unique(cluster$CNV)), "Pastel2")
+names(cnv.col) <- unique(cluster$CNV)
+
+methyl.col <- brewer.pal(length(unique(cluster$Methylation)), "Dark2")
+names(methyl.col) <- unique(cluster$Methylation)
+
+moffitt.col <- brewer.pal(length(unique(cluster$Moffitt)), "Set1")
+names(moffitt.col) <- unique(cluster$Moffitt)
+
+collisson.col <- brewer.pal(length(unique(cluster$Collisson)), "Set3")
+names(collisson.col) <- unique(cluster$Collisson)
+
+bailey.col <- brewer.pal(length(unique(cluster$Bailey)), "Set2")
+names(bailey.col) <- unique(cluster$Bailey)
+
+purity.col <- brewer.pal(length(unique(cluster$Purity)), "Accent")
+names(purity.col) <- unique(cluster$Purity)
+
+## combo color
+combo.cols <-
+  list(
+    cluster = cluster.col,
+    Gender = gender.col[1:2],
+    KRAS = kras.col[1:2],
+    RPPA = rppa.col,
+    lnRNA = lnrna.col[1:2],
+    miRNA = mirna.col,
+    CNV = cnv.col,
+    Methylation = methyl.col,
+    Moffitt = moffitt.col[1:2],
+    Collisson = collisson.col,
+    Bailey = bailey.col,
+    Purity = purity.col[1:2]
+  )
+
+# color breaks
+breaksList = seq(-2, 2, by = 0.1)
+
+svg("../results/nmf/heatmap_TCGA.svg", width = 24, height = 24)
+
+heatmap.p <- pheatmap(
+  ssgseaSubset,
+  scale = "row",
+  color = colorRampPalette(c("blue", "white", "red"))(length(breaksList)),
+  breaks = breaksList,
+  kmean_k = 3,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_rownames = TRUE,
+  show_colnames = FALSE,
+  cex = 1,
+  border_color = FALSE,
+  main = "Metabolites distribution",
+  display_numbers = FALSE,
+  cellwidth = 3,
+  cellheight = 10,
+  cutree_cols = 3,
+  annotation_col = cluster,
+  annotation_colors = combo.cols,
+)
+dev.off()
+```
+
+## survival analysis
+```{r surv}
+pDataFollow <- pData[pData$`Follow up tumor status` %in% c("WITH TUMOR", "TUMOR FREE"),]
+## Add survival object
+pData$SurvObj <- with(pData, Surv(as.numeric(pData$`Follow up days`), pData$`Follow up vital status` == "Dead"))
+pDataFollow$PFSurvObj <- with(pDataFollow, Surv(as.numeric(pDataFollow$`Follow up days`), pDataFollow$`Follow up tumor status` == "WITH TUMOR"))
+## Kaplan-Meier estimator. The "log-log" confidence interval is preferred.
+km.by.MetClusters.os <- survfit(SurvObj ~ Pseudoclusters, data = pData, conf.type = "log-log")  #OS
+km.by.MetClusters.pfs <- survfit(PFSurvObj ~ Pseudoclusters, data = pDataFollow, conf.type = "log-log")  #PFS
+## print OS results
+banner("overall survival")
+kable(summary(km.by.MetClusters.os)$table)
+km.by.MetClusters.os_chi <- survdiff(SurvObj ~ Pseudoclusters , data = pData)
+km.by.MetClusters.os_chi  
+## plot
+svg("../results/nmf/overall_survival.svg", width = 6, height = 6)
+ggsurvplot(
+  km.by.MetClusters.os,                     # survfit object with calculated statistics.
+  pval = TRUE,              # show p-value of log-rank test.
+  conf.int = FALSE,         # show confidence intervals for point estimaes of survival curves.
+  xlim=c(0,1825),
+  title="Metabolic clusters\n (overall survival)",
+  ylab = "Survival probability",
+  xlab = "Time in days",   # customize X axis label.
+  break.time.by = 365,     # break X axis in time intervals by 200.
+  risk.table = "abs_pct",  # absolute number and percentage at risk.
+  risk.table.y.text.col = TRUE,# colour risk table text annotations.
+  risk.table.y.text = FALSE,# show bars instead of names in text annotations in legend of risk table.
+  legend.title = "Metabolic clusters",
+  legend.labs = 
+    c("Cluster1", "Cluster2", "Cluster3"),    # change legend labels.
+  palette = 
+    brewer.pal(3,"Set1"), # custom color palettes.
+  legend= c(0.9, 0.7)
+)
+dev.off()
+## print PFS results
+banner("Progression free survival")
+kable(summary(km.by.MetClusters.pfs)$table)
+km.by.MetClusters.pfs_chi <- survdiff(PFSurvObj ~ Pseudoclusters, data = pDataFollow)
+km.by.MetClusters.pfs_chi  
+## plot
+svg("../results/nmf/progression_free_survival.svg", width = 6, height = 6)
+ggsurvplot(
+  km.by.MetClusters.pfs,                     # survfit object with calculated statistics.
+  pval = TRUE,              # show p-value of log-rank test.
+  conf.int = FALSE,         # show confidence intervals for point estimaes of survival curves.
+  xlim=c(0,1825),
+  title="Metabolic clusters\n (progression free survival)",
+  ylab = "Survival probability",
+  xlab = "Time in days",   # customize X axis label.
+  break.time.by = 365,     # break X axis in time intervals by 200.
+  risk.table = "abs_pct",  # absolute number and percentage at risk.
+  risk.table.y.text.col = TRUE,# colour risk table text annotations.
+  risk.table.y.text = FALSE,# show bars instead of names in text annotations in legend of risk table.
+  legend.title = "Metabolic clusters",
+  legend.labs = 
+    c("Cluster1", "Cluster2", "Cluster3"),    # change legend labels.
+  palette = 
+    brewer.pal(3,"Set1"), # custom color palettes.
+  legend= c(0.9, 0.7)
+)
+dev.off()
+```
+
+# Pie chart
+```{r pie}
+pData$Stage <- gsub("_n.*","",pData$`AJCC pathologic tumor stage`)
+pData$Stage <- gsub("stage ", "", pData$Stage)
+pData$Stage <- ifelse(grepl("ia",pData$Stage) | grepl("ib",pData$Stage) | 
+                        grepl("iia",pData$Stage) | grepl("iib",pData$Stage), "Grade 1_2", pData$Stage)
+## create data
+datPie <- pData %>%
+  group_by(Pseudoclusters, Stage) %>%
+  summarise(Freq = length(Stage)) %>%
+  arrange(Stage) %>%
+  na.omit()
+## define groups
+class <- unique(datPie$Stage)
+
+for (i in seq_along(class)) {
+## filtered dataclass[i],]
+filteredData <- datPie[datPie$Stage %in% class[i],]
+## samples
+nSamples <- sum(filteredData$Freq)
+## add percent
+filteredData <- filteredData %>%
+mutate(prop = percent(Freq/nSamples))
+## plot
+  p <- filteredData %>%
+    ggplot(aes(x = "", y = Freq)) +
+    geom_bar(
+      aes(fill = Pseudoclusters),
+      width = 0.1,
+      stat = "identity",
+      color = "gray50"
+    ) +
+    coord_polar("y", start = 0) +
+    scale_fill_manual(values = brewer.pal(3,"Set1")) +
+    theme_void() +
+    labs(title = paste(class[i], "n=", nSamples)) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    guides(fill = guide_legend(ncol = 3)) +
+    theme(plot.margin = unit(c(1, 1, 1, 1),
+                             "lines")) +
+    geom_label_repel(aes(label = prop), size=5, show.legend = F, nudge_x = 3)
+  ## print
+  print(p)
+  ## save plot
+  save_plot(
+    paste0("../results/nmf/pieChart_tcga_", class[i],".svg"),
+    fig = p,
+    width = 9,
+    height = 6,
+    dpi = 300
+  )
+  }
+```
+
+
+# Moffitt data
+
+## define subtypes
+```{r subtypes mf}
+moffitt <- getGEO("GSE71729", GSEMatrix = TRUE, AnnotGPL = TRUE)
+## subtypes and metadata
+pdac.subtype <- moffitt$GSE71729_series_matrix.txt.gz@phenoData@data
+## subset metdata
+pdac.subtype <- pdac.subtype[grepl("Primary", pdac.subtype$title),]
+## subset data
+moffitt <- moffitt[[1]]
+moffitt <- moffitt[,rownames(pdac.subtype)]
+## susbset data by genes
+moffittExprs <- data.frame((moffitt@assayData$exprs))
+moffittExprs <- moffittExprs[rownames(moffittExprs) %in% genes,]
+## row names to entrez
+moffittExprs$Entrez <- mapIds(org.Hs.eg.db, keys= rownames(moffittExprs), column='ENTREZID', keytype = 'SYMBOL')
+rownames(moffittExprs) <- moffittExprs$Entrez
+moffittExprs <- moffittExprs[, !colnames(moffittExprs) %in% "Entrez"]
+```
+
+# ssGSEA
+```{r ssgsea mf}
+## create expression dataset
+exprs <- ExpressionSet(data.matrix(moffittExprs))
+## crearte gsva matrix
+gsva <- gsva(exprs, pathways)
+## assign expression 
+ssgsea <- exprs(gsva)
+### subset ssgsea by PathwayMap
+ssgseaSubset <- ssgsea[grepl(paste0(toupper(c(pathwayMap)), collapse = "|"), rownames(ssgsea)),]
+## define pheatmap clusters
+cluster_size <- 3
+## basic heatmap
+heatmap.px <- pheatmap(
+  ssgseaSubset,
+  scale = "row",
+  kmean_k = cluster_size,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  silent = TRUE
+)
+## annotation_columns 
+cluster <-
+  cbind(heatmap.px, cluster = cutree(heatmap.px$tree_col, k = cluster_size))
+cluster <- as.data.frame(unlist(cluster[, 2]))
+colnames(cluster) <- c("Pseudoclusters")
+cluster$Pseudoclusters <- sub("^", "Cluster", cluster$Pseudoclusters)
+## add clusters to phenodata
+pData <- merge(pdac.subtype, cluster, by=0, all=TRUE)
+## format pData
+pData <- pData %>%
+  tibble::column_to_rownames("Row.names")
+## column annotations
+cluster <- as.data.frame(cbind(
+  cluster = pData$Pseudoclusters,
+  tumorSubtype = pData$`tumor_subtype_0na_1classical_2basal:ch2`,
+  stromaSubtype = pData$`stroma_subtype_0na_1low_2normal_3activated:ch2`
+))
+rownames(cluster) <- rownames(pData)
+
+## annotation colors
+cluster.col <- rev(brewer.pal(length(unique(cluster$cluster)), "Set1"))
+names(cluster.col) <- unique(cluster$cluster)
+
+tumorSubtype.col <- brewer.pal(length(unique(cluster$tumorSubtype)), "Paired")
+names(tumorSubtype.col) <- unique(cluster$tumorSubtype)
+
+stromaSubtype.col <- brewer.pal(length(unique(cluster$stromaSubtype)), "Set2")
+names(stromaSubtype.col) <- unique(cluster$stromaSubtype)
+## combo color
+combo.cols <-
+  list(
+    cluster = cluster.col,
+    tumorSubtype = tumorSubtype.col,
+    stromaSubtype = stromaSubtype.col
+  )
+
+# color breaks
+breaksList = seq(-2, 2, by = 0.1)
+
+svg("../results/nmf/heatmap_moffitt.svg", width = 10, height = 10)
+
+heatmap.p <- pheatmap(
+  ssgseaSubset,
+  scale = "row",
+  color = colorRampPalette(c("blue", "white", "red"))(length(breaksList)),
+  breaks = breaksList,
+  kmean_k = 3,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_rownames = TRUE,
+  show_colnames = FALSE,
+  cex = 1,
+  border_color = FALSE,
+  main = "Metabolites distribution",
+  display_numbers = FALSE,
+  cellwidth = 3,
+  cellheight = 10,
+  cutree_cols = 3,
+  annotation_col = cluster,
+  annotation_colors = combo.cols,
+)
+dev.off()
+```
+
+## survival analysis
+```{r surv mf}
+## Add survival object
+pData$SurvObj <- with(pData, Surv(as.numeric(pData$`survival_months:ch2`), pData$`death_event_1death_0censor:ch2`=="1"))
+## Kaplan-Meier estimator. The "log-log" confidence interval is preferred.
+km.by.MetClusters.os <- survfit(SurvObj ~ Pseudoclusters, data = pData, conf.type = "log-log")  #OS
+## print OS results
+banner("overall survival")
+kable(summary(km.by.MetClusters.os)$table)
+km.by.MetClusters.os_chi <- survdiff(SurvObj ~ Pseudoclusters , data = pData)
+km.by.MetClusters.os_chi  
+## plot
+svg("../results/nmf/overall_survival_moffitt.svg", width = 6, height = 6)
+ggsurvplot(
+  km.by.MetClusters.os,                     # survfit object with calculated statistics.
+  pval = TRUE,              # show p-value of log-rank test.
+  conf.int = FALSE,         # show confidence intervals for point estimaes of survival curves.
+  xlim=c(0,60),
+  title="Metabolic clusters\n (overall survival)",
+  ylab = "Survival probability",
+  xlab = "Time in days",   # customize X axis label.
+  break.time.by = 12,     # break X axis in time intervals by 200.
+  risk.table = "abs_pct",  # absolute number and percentage at risk.
+  risk.table.y.text.col = TRUE,# colour risk table text annotations.
+  risk.table.y.text = FALSE,# show bars instead of names in text annotations in legend of risk table.
+  legend.title = "Metabolic clusters",
+  legend.labs = 
+    c("Cluster1", "Cluster2", "Cluster3"),    # change legend labels.
+  palette = 
+    brewer.pal(3,"Set1"), # custom color palettes.
+  legend= c(0.9, 0.7)
+)
+dev.off()
+```
+
+# computing environment
+```{r}
+sessionInfo()
+```
+

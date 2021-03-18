@@ -1,0 +1,160 @@
+---
+title: "MetaPac"
+subtitle: "__clinical characteristics__"
+author: "_umahajan_"
+date:  "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+chooseCRANmirror(graphics=TRUE, ind=1)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=85),tidy=TRUE, echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+# load packages and datasets
+
+```{r packages}
+rm(list = ls())
+##---------------------------------------------------------------
+##                      required packages                      --
+##---------------------------------------------------------------
+scriptLibraries <-  c(
+  "here",
+  "dplyr",
+  "tidyr",
+  "ggplot2",
+  "ggrepel",
+  "scales",
+  "forcats",
+  "RColorBrewer",
+  "ggpubr",
+  "arsenal",
+  "psych", 
+  "epitools",
+  "sjPlot"
+)
+##---------------------------------------------------------------
+##                      load functions                    --
+##---------------------------------------------------------------
+source("../functions/ImputeTransformScale.R")
+source("../functions/basicFunctions.R")
+##---------------------------------------------------------------
+##                        load packages                        --
+##---------------------------------------------------------------
+installScriptLibs(scriptLibraries)
+##----------------------------------------------------------------
+##                         basic themes                         --
+##----------------------------------------------------------------
+ggplot_theme <- theme_classic() +
+  theme(
+    axis.line = element_line(size = 0.75),
+    axis.text = element_text(
+      size = 11,
+      face = "bold",
+      colour = "black"
+    ),
+    axis.title = element_text(size = 12, face = "bold")
+  )
+##---------------------------------------------------------------
+##                    set working directory                    --
+##---------------------------------------------------------------
+here::here()
+```
+
+# load dataset
+```{r df}
+pData <- read.csv("../results/clinicalCharacteristics/pData_formated.csv",
+                  na.strings=c("","NA"))
+## format columns
+pData <- pData[,!colnames(pData) %in% "ALIQUOT_ID"]
+## define subtypes
+pData$Subtypes <- paste0("subset", pData$Subtypes)
+## project phase
+table <- tableby(pData$PROJECT_PHASE ~ ., data = pData)
+table <- as.data.frame(summary(table))
+table[,1] <- gsub("&nbsp;&nbsp;&nbsp;", "", table[,1])
+table[,1]<- gsub("[**]", "", table[,1])
+knitr::kable(table, "html", booktabs = TRUE, 
+             caption = "Demographics and Distribution according to Phases") %>%
+  kableExtra::kable_styling(bootstrap_options = 
+                  c("striped", "hover", "condensed", "responsive"), 
+                full_width = FALSE)
+## Subtypes
+table <- tableby(pData$Subtypes ~ ., data = pData)
+table <- as.data.frame(summary(table))
+table[,1] <- gsub("&nbsp;&nbsp;&nbsp;", "", table[,1])
+table[,1]<- gsub("[**]", "", table[,1])
+knitr::kable(table, "html", booktabs = TRUE, 
+             caption = "Demographics and Distribution according to subtypes") %>%
+  kableExtra::kable_styling(bootstrap_options = 
+                  c("striped", "hover", "condensed", "responsive"), 
+                full_width = FALSE)
+```
+
+# Pie chart
+```{r pie}
+pData$Classification <- ifelse(grepl(paste("IA", "IB", "IIA", "IIB",
+                                           sep="|"), as.character(pData$UICC_TUMOR_CLASSIFICATION)),"I_II",
+                               as.character(pData$UICC_TUMOR_CLASSIFICATION))
+## create data
+datPie <- pData %>%
+  group_by(Subtypes, Classification) %>%
+  summarise(Freq = length(Classification)) %>%
+  arrange(Classification) %>%
+  na.omit()
+## define groups
+class <- unique(datPie$Classification)
+
+for (i in seq_along(class)) {
+## filtered dataclass[i],]
+filteredData <- datPie[datPie$Classification %in% class[i],]
+## samples
+nSamples <- sum(filteredData$Freq)
+## add percent
+filteredData <- filteredData %>%
+mutate(prop = percent(Freq/nSamples))
+## plot
+  p <- filteredData %>%
+    ggplot(aes(x = "", y = Freq)) +
+    geom_bar(
+      aes(fill = Subtypes),
+      width = 0.1,
+      stat = "identity",
+      color = "gray50"
+    ) +
+    coord_polar("y", start = 0) +
+    scale_fill_manual(values = brewer.pal(3,"Set1")) +
+    theme_void() +
+    labs(title = paste(class[i], "n=", nSamples)) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    guides(fill = guide_legend(ncol = 3)) +
+    theme(plot.margin = unit(c(1, 1, 1, 1),
+                             "lines")) +
+    geom_label_repel(aes(label = prop), size=5, show.legend = F, nudge_x = 3)
+  ## print
+  print(p)
+  ## save plot
+  save_plot(
+    paste0("../results/nmf/pieChart_", class[i],".svg"),
+    fig = p,
+    width = 9,
+    height = 6,
+    dpi = 300
+  )
+  }
+```
+
+# computing environment
+```{r}
+sessionInfo()
+```
+

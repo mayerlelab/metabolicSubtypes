@@ -1,0 +1,342 @@
+---
+title: "META-PAC"
+subtitle: "__Pre-processing__"
+author: "_umahajan_"
+date:  "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+chooseCRANmirror(graphics = TRUE, ind = 1)
+knitr::opts_chunk$set(
+  tidy.opts = list(width.cutoff = 85),
+  tidy = TRUE,
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# load packages and datasets
+```{r packages}
+rm(list = ls())
+##---------------------------------------------------------------
+##                      required packages                      --
+##---------------------------------------------------------------
+scriptLibraries <-  c(
+  "here",
+  "dplyr",
+  "tidyr",
+  "openxlsx",
+  "janitor",
+  "ggvenn",
+  "RColorBrewer"
+)
+##---------------------------------------------------------------
+##                      download packages                      --
+##---------------------------------------------------------------
+installScriptLibs <- function(x) {
+  for (i in 1:length(x)) {
+    if ((x[i] %in% .packages(all.available = TRUE)) == TRUE) {
+      eval(parse(text = paste("require(", x[i], ")", sep = "")))
+    } else if (x[i] %in% BiocManager::available(x[i])) {
+      eval(parse(text = paste(
+        "BiocManager::install('", x[i], "')", sep = ""
+      )))
+    } else {
+      eval(parse(text = paste(
+        "install.packages('", x[i], "')", sep = ""
+      )))
+      eval(parse(text = paste(
+        "install.packages('", x[i], "')", sep = ""
+      )))
+    }
+  }
+}
+##---------------------------------------------------------------
+##                       banner function                       --
+##---------------------------------------------------------------
+banner <-function(txt, Char ="-") {
+  nchar <- 64
+  ## head tail
+  headTail <- strrep(Char, nchar)
+  hash <- paste0("##")
+  charEnd <- strrep(Char,2)
+  headTailSent <- paste0(hash, headTail)
+  ## text
+  textChar <- nchar(txt)
+  if (textChar > nchar) {
+    txt <- substring(txt, first = 1, last = 60)
+  }
+  space <- " "
+  centering <- (nchar - 2) - textChar
+  spacesBeforeAfter <- strrep(space, centering/2)
+  
+  textSent <- paste0(hash,
+                     spacesBeforeAfter,
+                     txt,
+                     spacesBeforeAfter, 
+                     charEnd)
+  
+  return(cat(paste0(headTailSent ,
+                    "\n",textSent ,
+                    "\n",headTailSent,
+                    "\n")))
+  
+}
+##---------------------------------------------------------------
+##                        load packages                        --
+##---------------------------------------------------------------
+installScriptLibs(scriptLibraries)
+##---------------------------------------------------------------
+##                    set working directory                    --
+##---------------------------------------------------------------
+here::here()
+##---------------------------------------------------------------
+##                   create result directory                   --
+##---------------------------------------------------------------
+ifelse(!dir.exists(file.path(paste0(here()), "results")),
+dir.create(file.path(paste0(here()), "results")), FALSE)
+```
+
+## Data preprocessing
+```{r data}
+##---------------------------------------------------------------
+##                    load metabolite names                    --
+##---------------------------------------------------------------
+metaboliteNames <- 
+  read.csv("../masterTable/masterTableMetaboliteNames.csv",
+           stringsAsFactors = FALSE)
+##----------------------------------------------------------------
+##                     load metabolite data                     --
+##----------------------------------------------------------------
+origData <-
+  read.xlsx(
+    "../Data/ID_VD1_VD2_PLASMA_SERUM_MxP_Metabolomics_Data_2019-08-14_MetaboliteData_MTXH.xlsx",
+    1
+  )
+##----------------------------------------------------------------
+##                      load clinical data                      --
+##----------------------------------------------------------------
+clinData1 <-
+  read.xlsx("../Data/Clinical_data_ID_VD1_VD2_Status_20170427.xlsx", 
+            )
+
+clinData2 <-
+  read.xlsx("../Data/Clinical_data_ID_VD1_VD2_Status_20170427.xlsx", 
+            2)
+##---------------------------------------------------------------
+##                     merge clinical data                     --
+##---------------------------------------------------------------
+clinData <-
+  merge(clinData1,
+        clinData2,
+        all = TRUE,
+        by = "OWNER_ID",
+        sort = FALSE)
+##----------------------------------------------------------------
+##                      merge all datasets                      --
+##----------------------------------------------------------------
+expData <-
+  merge(origData,
+        clinData,
+        all = FALSE,
+        by = "ALIQUOT_ID",
+        sort = FALSE)
+##---------------------------------------------------------------
+##                  assign disease categories                  --
+##---------------------------------------------------------------
+expData$Disease_short <-
+  ifelse(
+    expData$DIAGNOSE == "Blutspender",
+    "Control",
+    ifelse(
+      expData$DIAGNOSE == "Control",
+      "Non_pancreatic_control",
+      ifelse(
+        expData$DIAGNOSE == "Leberzirrhose",
+        "Non_pancreatic_control",
+        ifelse(
+          expData$DIAGNOSE == "Non-pancreatic control",
+          "Non_pancreatic_control",
+          ifelse(
+            expData$DIAGNOSE == "Pankreatitis",
+            "CP",
+            ifelse(expData$DIAGNOSE == "CP", "CP", "PDAC")
+          )
+        )
+      )
+    )
+  )
+##---------------------------------------------------------------
+##                    clear corrupt columns                    --
+##---------------------------------------------------------------
+colnames(expData) <- gsub(".x", "", colnames(expData))
+colnames(expData) <- gsub(".y", "", colnames(expData))
+##---------------------------------------------------------------
+##                  delete duplicated columns                  --
+##---------------------------------------------------------------
+expData <- expData[, !duplicated(colnames(expData))]
+##---------------------------------------------------------------
+##                        clear names                          --
+##---------------------------------------------------------------
+expData <- expData %>%
+  clean_names(case = "none")
+
+## subset data for plasma measurements
+expData <- expData[expData$MATRIX %in% "Human Plasma",]
+
+## for comparison
+expDataOrg <- expData
+##---------------------------------------------------------------
+##          create results/preprocessedData directory          --
+##---------------------------------------------------------------
+ifelse(!dir.exists(file.path(paste0(here()), "results/preprocessedData")),
+dir.create(file.path(paste0(here()), "results/preprocessedData")), FALSE)
+##----------------------------------------------------------------
+##                    save preprocessed data                    --
+##----------------------------------------------------------------
+saveRDS(expData, "../results/preprocessedData/expDataWithNAs.rds")
+dim(expData)
+##################################################################
+##             remove metabolites with missing data             ##
+##################################################################
+phases <- unique(expData$PROJECT_PHASE)
+colNames <- c()
+##----------------------------------------------------------------
+##              function for missing data columns               --
+##----------------------------------------------------------------
+for (ph in seq_along(phases)) {
+  ## project phase
+  selectedPhase <- phases[ph]
+  ## data for project phase
+  splitData <- expData[expData[["PROJECT_PHASE"]] %in% selectedPhase, ]
+  ## to remove from other phases following completion of first loop
+  if (is.null(colNames) != TRUE) {
+     splitData <- splitData[, colnames(splitData) %in% colNames]
+   }
+  ## select metabolites columns
+  splitData <- splitData[, grepl("^X", colnames(splitData))]
+  ## percent of missing values
+  colMeans <- which(colMeans(is.na(splitData)) < 0.1)
+  ## remove columns with missing values >10%
+  splitData <- splitData[, colnames(splitData) %in% names(colMeans)]
+  ## extract columnNames
+  colNames <- colnames(splitData)
+}
+venn <- list()
+##----------------------------------------------------------------
+##                    stat for cosort diagram              --
+##----------------------------------------------------------------
+for (ph in seq_along(phases)) {
+  ## project phase
+  selectedPhase <- phases[ph]
+  banner(paste("stats for", selectedPhase))
+  ## data for project phase
+  splitData <- expData[expData[["PROJECT_PHASE"]] %in% selectedPhase, ]
+  ## subset data for PDAC
+  splitData <- splitData[splitData$Disease_short %in% "PDAC",]
+  print("number of patients")
+  print(table(splitData$Disease_short))
+  ## select metabolites columns
+  splitData <- splitData[, grepl("^X", colnames(splitData))]
+  ## identified metabolites (remove all missing)
+  splitData <- splitData[,which(unlist(lapply(splitData, function(x) !all(is.na(x)))))]
+  print("number of identified metabolites")
+  print(ncol(splitData))
+  ## percent of missing values
+  colMeans <- which(colMeans(is.na(splitData)) < 0.1)
+  ## remove columns with missing values >10%
+  splitData <- splitData[, colnames(splitData) %in% names(colMeans)]
+  print("number of filtered metabolites")
+  venn[[selectedPhase]] <- colnames(splitData)
+  print(ncol(splitData))
+}
+##venn diagram
+p <-ggvenn(venn,
+       fill_color = brewer.pal(phases, "Set1"))
+
+print(p)
+## save
+sjPlot::save_plot(
+    paste0("../results/preprocessedData/venn.svg"),
+    fig = p,
+    width = 9,
+    height = 9,
+    dpi = 300
+  )
+
+##---------------------------------------------------------------
+##          remove columns with missing values >10%            --
+##---------------------------------------------------------------
+## clinical data 
+expDataClinical <- expData[, !grepl("^X", colnames(expData))]
+## select 
+expData <- expData[,colnames(expData) %in% colNames]
+## merge dataset
+expData <- cbind(expData, expDataClinical)
+##----------------------------------------------------------------
+##             print dropouts metabolites per phase             --
+##----------------------------------------------------------------
+## ID
+banner("ID dataset metabolites drop-out")
+id <- colMeans(is.na(expData[expData$PROJECT_PHASE %in% "ID",]))
+## dropout fro expData
+names <- colnames(expDataOrg)[!colnames(expDataOrg) %in% names(id)]
+## get ids
+metaboliteID <- gsub("^X", "", names)
+## match metabolite ID
+matchNames <-
+  match(metaboliteID, metaboliteNames$ID, nomatch = 0)
+## select metabolite names
+names[metaboliteID %in% metaboliteNames$ID] <-
+  metaboliteNames$METABOLITE_NAME[matchNames]
+## print
+names
+## VD1
+banner("VD1 dataset metabolites drop-out")
+vd <- colMeans(is.na(expData[expData$PROJECT_PHASE %in% "VD1",]))
+## dropout fro expData
+names <- colnames(expDataOrg)[!colnames(expDataOrg) %in% names(vd)]
+## get ids
+metaboliteID <- gsub("^X", "", names)
+## match metabolite ID
+matchNames <-
+  match(metaboliteID, metaboliteNames$ID, nomatch = 0)
+## select metabolite names
+names[metaboliteID %in% metaboliteNames$ID] <-
+  metaboliteNames$METABOLITE_NAME[matchNames]
+## print
+names
+## VD2
+banner("VD2 dataset metabolites drop-out")
+vd2 <- colMeans(is.na(expData[expData$PROJECT_PHASE %in% "VD2",]))
+## dropout fro expData
+names <- colnames(expDataOrg)[!colnames(expDataOrg) %in% names(vd2)]
+## get ids
+metaboliteID <- gsub("^X", "", names)
+## match metabolite ID
+matchNames <-
+  match(metaboliteID, metaboliteNames$ID, nomatch = 0)
+## select metabolite names
+names[metaboliteID %in% metaboliteNames$ID] <-
+  metaboliteNames$METABOLITE_NAME[matchNames]
+## print
+names
+##----------------------------------------------------------------
+##                  save pre-processed data                     --
+##----------------------------------------------------------------
+saveRDS(expData, "../results/preprocessedData/expDataWithoutNAs.rds")
+dim(expData)
+```
+
+# computing environment
+```{r session}
+sessionInfo()
+```
+
