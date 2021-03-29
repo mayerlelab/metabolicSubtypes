@@ -74,6 +74,8 @@ pData <- read.csv("../results/clinicalCharacteristics/pData_formated.csv",
 pData <- pData[,!colnames(pData) %in% "ALIQUOT_ID"]
 ## define subtypes
 pData$Subtypes <- paste0("subset", pData$Subtypes)
+## convert to factors
+pData$TUMOR_GRADING <- as.factor(pData$TUMOR_GRADING)
 ## project phase
 table <- tableby(pData$PROJECT_PHASE ~ ., data = pData)
 table <- as.data.frame(summary(table))
@@ -153,6 +155,78 @@ mutate(prop = percent(Freq/nSamples))
   }
 ```
 
+# Pie chart
+```{r pie grade}
+## create data
+datPie <- pData %>%
+  group_by(Subtypes, TUMOR_GRADING) %>%
+  summarise(Freq = length(TUMOR_GRADING)) %>%
+  arrange(TUMOR_GRADING) %>%
+  na.omit() %>%
+  filter(!TUMOR_GRADING %in% "X")
+
+p <- ggplot(datPie, aes(fill=TUMOR_GRADING, y=Freq, x=Subtypes)) + 
+    geom_bar(position="fill", stat="identity", color = "black") +
+  scale_fill_manual(values = brewer.pal(length(unique(datPie$TUMOR_GRADING)),"Dark2")) +
+  xlab("") +
+  ylab("Tumor Grade (%)") +
+  ggplot_theme
+## print
+print(p)
+## save plot
+save_plot(
+    paste0("../results/nmf/tumor_grade.svg"),
+    fig = p,
+    width = 9,
+    height = 7,
+    dpi = 300
+  )
+
+## define groups
+class <- unique(datPie$TUMOR_GRADING)
+
+for (i in seq_along(class)) {
+## filtered dataclass[i],]
+filteredData <- datPie[datPie$TUMOR_GRADING %in% class[i],]
+## samples
+nSamples <- sum(filteredData$Freq)
+## add percent
+filteredData <- filteredData %>%
+mutate(prop = percent(Freq/nSamples))
+## plot
+  p <- filteredData %>%
+    ggplot(aes(x = "", y = Freq)) +
+    geom_bar(
+      aes(fill = Subtypes),
+      width = 0.1,
+      stat = "identity",
+      color = "gray50"
+    ) +
+    coord_polar("y", start = 0) +
+    scale_fill_manual(values = brewer.pal(3,"Set1")) +
+    theme_void() +
+    labs(title = paste(class[i], "n=", nSamples)) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    guides(fill = guide_legend(ncol = 3)) +
+    theme(plot.margin = unit(c(1, 1, 1, 1),
+                             "lines")) +
+    geom_label_repel(aes(label = prop), size=5, show.legend = F, nudge_x = 3)
+  ## print
+  print(p)
+  ## save plot
+  save_plot(
+    paste0("../results/nmf/pieChart_grade", class[i],".svg"),
+    fig = p,
+    width = 9,
+    height = 6,
+    dpi = 300
+  )
+  }
+```
 # computing environment
 ```{r}
 sessionInfo()
