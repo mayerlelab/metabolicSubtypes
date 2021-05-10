@@ -61,7 +61,7 @@ wgcna_heatmaps <- function(MEs, datExpr, datTraits, projectfolder = getwd()){
                         yLabels = names(MEs),
                         ySymbols = names(MEs),
                         colorLabels = FALSE,
-                        colors = WGCNA::blueWhiteRed(50),
+                        colors = colorRampPalette(c("green", "white", "red"))(n = 50),
                         textMatrix = textMatrix,
                         setStdMargins = FALSE,
                         cex.text = 1,

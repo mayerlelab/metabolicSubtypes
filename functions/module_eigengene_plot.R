@@ -26,14 +26,19 @@ ggplot_theme <- theme_classic() +
     axis.title = element_text(size = 12, face = "bold")
 )
 
-module_eigengene_plot <- function(groups, MEs, color){
+module_eigengene_plot <- function(groups, MEs, color) {
   ## ME _colors
   MEs_color <- MEs[,which(colnames(MEs) == paste0("ME", color)), drop=FALSE]
   ## data subset
   traitsinfo <- cbind(MEs_color, groups=groups[,1][match(rownames(MEs_color), rownames(groups))])
+  
   ## plot
-  p <- ggplot(traitsinfo, aes(x = groups, y = traitsinfo[,1], fill = groups)) +
-    geom_boxplot(color = 'black', alpha = 0.5) +
+  p <- ggplot(traitsinfo, aes(x = as.factor(groups), y = traitsinfo[,1], fill = as.factor(groups))) +
+    geom_bar(position="dodge", 
+             stat = "summary", 
+             fun = "mean",
+             color = 'black', 
+             alpha = 0.5) +
     geom_point(
       size = 3,
       shape = 21,

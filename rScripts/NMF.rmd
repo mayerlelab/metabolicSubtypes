@@ -195,20 +195,20 @@ for(algName in algs_list) {
   ## select algorithms
   myAlg <- nmfAlgorithm(algName)
   ## run nmf
-  res <- nmf(transImputedData, 
-             rank=K_seq, 
-             method=myAlg, 
-             seed=NMF.seed, 
-             nrun=NMF.iters, 
+  res <- nmf(transImputedData,
+             rank=K_seq,
+             method=myAlg,
+             seed=NMF.seed,
+             nrun=NMF.iters,
              .pbackend=numberOfCores)
   ## consensusmap
   consensusmap(res)
   ## run nmf on randomised data
-  rand <- nmf(randTransImputedData, 
-              rank=K_seq, 
-              method=myAlg, 
-              seed=NMF.seed, 
-              nrun=NMF.iters, 
+  rand <- nmf(randTransImputedData,
+              rank=K_seq,
+              method=myAlg,
+              seed=NMF.seed,
+              nrun=NMF.iters,
               .pbackend=numberOfCores)
   ## plot
   p <- plot(res, rand)
@@ -218,7 +218,7 @@ for(algName in algs_list) {
   ## add results
   NMF_results <- rbind(NMF_results,
                        mat)
-}   
+}
 ## evaluate over rank K
 nmfMethodRank <- NMF_results %>%
   group_by(method) %>%
@@ -241,14 +241,14 @@ for(i in seq_along(K_seq)) {
   K = K_seq[i]
   banner(paste0('starting K =', K))
   myAlg <- nmfAlgorithm(algName)
-  res <- nmf(transImputedData, 
-             rank=K, 
-             method=myAlg, 
-             seed=NMF.seed, 
-             nrun=NMF.iters, 
+  res <- nmf(transImputedData,
+             rank=K,
+             method=myAlg,
+             seed=NMF.seed,
+             nrun=NMF.iters,
              .pbackend=numberOfCores)
   H = coef(res)
-  r = apply(H, 2, which.max)  
+  r = apply(H, 2, which.max)
   df = data.frame(apply(H, 2, function(x) x/sum(x)))
   df = rbind(df, r)
   transDf = t(df) %>%
@@ -281,12 +281,12 @@ for(i in seq_along(K_seq)) {
   meltDf = reshape2::melt(transDf, c("sample", "obs", "n"))
   ## propability plot
   p1 <- ggplot(meltDf, aes(fill=variable,
-                           group=factor(variable, 
-                                        sort(unique(variable), 
-                                             decreasing=TRUE)), 
+                           group=factor(variable,
+                                        sort(unique(variable),
+                                             decreasing=TRUE)),
                            x=n,
-                           y=value)) + 
-    geom_bar(position="stack", 
+                           y=value)) +
+    geom_bar(position="stack",
              stat="identity",
              width=1, color = "gray", size =0.1) +
     theme_pubclean() +
@@ -312,9 +312,9 @@ for(i in seq_along(K_seq)) {
   ## cluster plot
   p2 <- ggplot(transDf) +
     geom_bar(aes(x= n,
-                 y= 1, 
+                 y= 1,
                  fill= factor(obs)),
-             stat = "identity", 
+             stat = "identity",
              width = 1, color = "gray", size =0.1) +
     theme_pubclean() +
     scale_fill_manual(values = brewer.pal(length(unique(
@@ -325,12 +325,12 @@ for(i in seq_along(K_seq)) {
     theme(axis.line.x = element_blank(),
           axis.text = element_blank(),
           axis.ticks = element_blank(),
-          axis.title = element_text(size = 12, 
+          axis.title = element_text(size = 12,
                                     face = "bold"))
   ## plot merge plot
-  plot <- cowplot::plot_grid(p1, p2, 
-                             align = "v", 
-                             ncol = 1, 
+  plot <- cowplot::plot_grid(p1, p2,
+                             align = "v",
+                             ncol = 1,
                              rel_heights = c(0.5, 0.1))
   print(plot)
   ## save results
@@ -367,6 +367,12 @@ consensusmap(resModel, annCol=pData$PROJECT_PHASE,
                             X1 = brewer.pal(unique(pData$PROJECT_PHASE), "Dark2")),
              tracks = c("basis:","consensus:"))
 dev.off()
+## print
+consensusmap(resModel, annCol=pData$PROJECT_PHASE,
+             annColors=list(basis = brewer.pal(optRank, "Set2"),
+                            consensus = brewer.pal(optRank, "Set1"),
+                            X1 = brewer.pal(unique(pData$PROJECT_PHASE), "Dark2")),
+             tracks = c("basis:","consensus:"))
 ```
 
 ## basismap
@@ -376,6 +382,9 @@ svg("../results/nmf/basismap.svg", width = 6, height = 10)
 basismap(resModel, annColors=list(brewer.pal(optRank, "Set2")),
          color = "Greens:50")
 dev.off()
+## print
+basismap(resModel, annColors=list(brewer.pal(optRank, "Set2")),
+         color = "Greens:50")
 ```
 
 ## coefmap
@@ -386,6 +395,10 @@ coefmap(resModel, annColors=list(basis = brewer.pal(optRank, "Set2"),
                                  consensus = brewer.pal(optRank, "Set1")),
         color = "Reds:50")
 dev.off()
+## print
+coefmap(resModel, annColors=list(basis = brewer.pal(optRank, "Set2"),
+                                 consensus = brewer.pal(optRank, "Set1")),
+        color = "Reds:50")
 ```
 
 ## Silhouette
@@ -395,13 +408,16 @@ svg("../results/nmf/Sihouette.svg", width = 6, height = 9)
 plot(silhouette(resModel, what = 'consensus'), col = brewer.pal(optRank, "Set1"),
      main="Sihouette plot")
 dev.off()
+## print
+plot(silhouette(resModel, what = 'consensus'), col = brewer.pal(optRank, "Set1"),
+     main="Sihouette plot")
 ```
 
 ## Data for downstream alalysis
 ```{r downstream}
 ## predict the PDAC subtypes
 subtypes <- predict(resModel, what = "consensus")
-subtypes <- sort(subtypes)
+subtypes <- factor(subtypes, levels = c(1,2,3))
 ## merge subtypes to imputedData
 imputedData$Subtypes <- subtypes[match(rownames(imputedData), names(subtypes), nomatch=0)]
 imputedData$Subtypes <- paste0("subtype", imputedData$Subtypes)
@@ -413,7 +429,7 @@ write.csv(imputedData, "../results/nmf/imputedData.csv", row.names = TRUE)
 Weighted correlation network analysis (WGCNA) can be used for finding clusters (modules) of highly correlated genes (here we used for pathways), for summarizing such clusters using the module eigengene or an intramodular hub metabolites, for relating modules to one another and to external sample traits (using eigengene network methodology), and for calculating module membership measures.
 Correlation networks facilitate network based gene screening methods that can be used to identify candidate biomarkers or therapeutic targets.
 
-WGCNA clusters genes into network modules using a topological overlap measure (TOM). The TOM is a highly robust measure of network interconnect- edness and essentially provides a measure of the connection strength between two adjacent genes and all other genes in a network. Genes are clustered using 1-TOM as the distance measure and gene modules are defined as branches of the resulting cluster tree using a dynamic branch-cutting algorithm
+WGCNA clusters genes into network modules using a topological overlap measure (TOM). The TOM is a highly robust measure of network interconnectedness and essentially provides a measure of the connection strength between two adjacent genes and all other genes in a network. Genes are clustered using 1-TOM as the distance measure and gene modules are defined as branches of the resulting cluster tree using a dynamic branch-cutting algorithm
 
 ```{r wgcna_sample_dendrogram, eval=TRUE, fig.width=8, fig.height=5}
 ## trait set
@@ -429,7 +445,7 @@ datExpr <- wgcna_sample_dendrogram(exprSet, (datTraits))
 ```
 
 ## Choosing a Soft Threshold
-```{r wgcna_sft, eval=FALSE}
+```{r wgcna_sft, eval=TRUE}
 # Choose a set of soft thresholding powers
 powers <- c(c(1:10), seq(from = 12, to=30, by=2))
 minModuleSize <- 15
@@ -477,7 +493,7 @@ print(p)
 ```
 
 ## Automatic module detection via dynamic tree cutting
-```{r wgcna_net, eval=FALSE}
+```{r wgcna_net}
 softpower = softPower
 mergingThresh = 0.25
 net = blockwiseModules(datExpr, 
@@ -514,6 +530,9 @@ write.csv(MEs, "../results/wgcna/Automatic_ModuleEigengenes_numberLabel.csv")
 datKME <- WGCNA::signedKME(datExpr, MEs)
 colnames(datKME) <- sub("kME", "MM.", colnames(datKME))
 ## correlation heatmap
+svg("../results/nmf/MEs.svg", width = 7, height = 10)
+wgcna_heatmaps(MEs, datExpr, datTraits)
+dev.off()
 wgcna_heatmaps(MEs, datExpr, datTraits)
 ```
 
@@ -571,7 +590,21 @@ for (trait in colnames(datTraits)) {
     ## plot
      datPlot <- data.frame(X=datKME[restModule, column],
                            Y=GS.datTraits[restModule, grep(trait, names(moduleTraitCor), value = T)])
+     ## annotate metabolite names
+     rownames(datPlot) <- rownames(datKME[restModule,])
+     ## Annotate metbolites id
+     rownames(datPlot) <- gsub("^X", "", rownames(datPlot))
+     ## match id 
+      matchColumnNames <-
+       match(rownames(datPlot), metaboliteNames$ID, nomatch = 0)
+     ## anotate names
+     datPlot$metaboliteName <-
+  as.character(metaboliteNames$METABOLITE_NAME)[matchColumnNames]
+     ## formula
      formula <- y ~ x  
+     ## number of metabolites per modules
+     banner("number of metabolites")
+     print(paste0("number of metabolites in ", colorOfColumn[column], "-module ", nrow(datPlot)))
      ## plot
      p <- ggplot(datPlot, aes(x=X, y=Y)) +
        geom_point(shape=21,
@@ -592,7 +625,10 @@ for (trait in colnames(datTraits)) {
        xlab(paste("Module Membership:", module, "module")) +
        ylab(paste("metabolite significance:", trait)) +
        ggtitle("Module membership vs. metabolite significance") +
-       scale_x_continuous(limits = c(0,1), breaks = seq(0,1, 0.5))
+       scale_x_continuous(limits = c(0,1), breaks = seq(0,1, 0.5)) +
+    geom_text_repel(data = head(datPlot[with(datPlot, order(-X, -Y)),], 3),
+                    aes(label = metaboliteName),
+                    min.segment.length = 0.1)
 
     
     # try(p <-
@@ -646,7 +682,7 @@ write.csv(dataOutput,"../results/wgcna/AllmetabolitesResults.csv", row.names = F
 ```{r module_eigengene_plot}
 groupsSubtypes <- data.frame(subtypes)
 for (color in gsub("ME", "", colnames(MEs))){
-  p <- module_eigengene_plot(groupsSubtypes, MEs, color)
+  p <- module_eigengene_plot(groupsSubtypes,MEs, color)
   # print
   print(p)
   # save plot
@@ -664,7 +700,7 @@ for (color in gsub("ME", "", colnames(MEs))){
 ```
 
 # Heatmap
-```{r heatmap, fig.width=15,fig.height=15}
+```{r heatmap, fig.width=13,fig.height=13}
 ##----------------------------------------------------------------
 ##                   create pData for heatmap                   --
 ##----------------------------------------------------------------
@@ -744,6 +780,9 @@ cluster <-
   ))
 rownames(cluster) <- rownames(datHeatmapMat)
 
+cluster <- cluster[order(cluster$cluster),]
+
+
 ## annotation_columns---------------------------------------------------------
 Panel <- gsub("^X", "", colnames(datHeatmapMat))
 
@@ -767,6 +806,7 @@ colnames(panel) <- c("MetabolitesClass")
 ## annotation colors --------------------------------------------------------
 cluster.col <- brewer.pal(length(unique(cluster$cluster)), "Set1")
 names(cluster.col) <- unique(cluster$cluster)
+
 
 # subtype.col <- brewer.pal(length(unique(cluster$Subtypes)), "Set1")
 # names(subtype.col) <- unique(cluster$Subtypes)
@@ -855,8 +895,31 @@ heatmap.p <- pheatmap(
 dev.off()
 ```
 
+```{r}
+## print
+heatmap.p <- pheatmap(
+  scale(datHeatmapMat_ordered),
+  color = colorRampPalette(c("blue", "white", "red"))(length(breaksList)),
+  breaks = breaksList,
+  cluster_rows = FALSE,
+  cluster_cols = TRUE,
+  show_rownames = FALSE,
+  show_colnames = FALSE,
+  cex = 1,
+  border_color = FALSE,
+  main = "Metabolites distribution",
+  display_numbers = FALSE,
+  cellwidth = 1.5,
+  cellheight = 1.5,
+  annotation_row = cluster,
+  annotation_col = panel,
+  annotation_colors = combo.cols,
+  gaps_row = cut
+)
+```
+
 ## heatmap metabolic programs
-```{r heatmap metPrograme, fig.width=10,fig.height=10}
+```{r heatmap metPrograme, fig.width=7,fig.height=7}
 uniquePrograms <- unique(dataOutput$moduleColors)
 
 for (program in seq_along(uniquePrograms)) {
@@ -865,7 +928,7 @@ for (program in seq_along(uniquePrograms)) {
   metaboliteInProgram <- paste0("X", metaboliteInProgram)
   dataMetProgram <- datHeatmapMat_ordered[,colnames(datHeatmapMat_ordered) %in% metaboliteInProgram]
   ## plot
-  svg(paste0("../results/nmf/heatmap_", programName, ".svg"), width = 10, height = 10)
+  svg(paste0("../results/nmf/heatmap_", programName, ".svg"), width = 7, height = 7)
   heatmap.p <- pheatmap(
   scale(dataMetProgram),
   color = colorRampPalette(c("blue", "white", "red"))(length(breaksList)),
@@ -890,12 +953,43 @@ dev.off()
 }
 ```
 
+```{r heatmap metPrograme print, fig.width=7,fig.height=7}
+uniquePrograms <- unique(dataOutput$moduleColors)
+
+for (program in seq_along(uniquePrograms)) {
+  programName <- uniquePrograms[program]
+  metaboliteInProgram <- rownames(dataOutput)[dataOutput$moduleColors %in% programName]
+  metaboliteInProgram <- paste0("X", metaboliteInProgram)
+  dataMetProgram <- datHeatmapMat_ordered[,colnames(datHeatmapMat_ordered) %in% metaboliteInProgram]
+  ## plot
+  heatmap.p <- pheatmap(
+  scale(dataMetProgram),
+  color = colorRampPalette(c("blue", "white", "red"))(length(breaksList)),
+  breaks = breaksList,
+  clustering_distance_rows = "correlation",
+  cluster_rows = FALSE,
+  cluster_cols = TRUE,
+  show_rownames = FALSE,
+  show_colnames = FALSE,
+  cex = 1,
+  border_color = FALSE,
+  main = paste0("Metabolic program: ",programName),
+  display_numbers = FALSE,
+  cellwidth = 1,
+  cellheight = 1,
+  annotation_row = cluster,
+  annotation_col = panel,
+  annotation_colors = combo.cols,
+  gaps_row = cut
+)
+}
+```
 # feature extraction
 
 ## extracted features
 ```{r ext features}
 ## extract features
-metasetTop <- extractFeatures(resModel, 5)
+metasetTop <- extractFeatures(resModel, 30)
 ## metabolites names
 metabolites <- rownames(transImputedData)
 ## list top 30 metabolites per subtype
@@ -1424,20 +1518,21 @@ for (i in seq_along(groups)) {
       pch = 21
     ) +
     ggtitle(groups[i]) +
-    geom_text_repel(data = head(filteredData, 2),
-                    aes(label = MetaboliteName),
-                    min.segment.length = 0.1) +
-    geom_text_repel(data = tail(filteredData, 2),
-                    aes(label = MetaboliteName),
-                    min.segment.length = 0.1) +
+    # geom_text_repel(data = head(filteredData, 2),
+    #                 aes(label = MetaboliteName),
+    #                 min.segment.length = 0.1) +
+    # geom_text_repel(data = tail(filteredData, 2),
+    #                 aes(label = MetaboliteName),
+    #                 min.segment.length = 0.1) +
     ggplot_theme +
     theme(legend.text.align = 0) +
     scale_fill_manual(values =  unique(plotData$color[order(plotData$MetaboliteClass)])) +
     labs(fill = "Metabololites category",
          x = "Relative Abundance",
          y = "p value (-log10)")  +
-    scale_x_continuous(trans = "log10", limits = c(0.3,3)) +
-    theme(legend.position = "none")
+    # scale_x_continuous(trans = "log10", limits = c(0.5,1.5)) +
+    theme(legend.position = "none") +
+    geom_hline(yintercept = -log10(0.05), lty ="dotted")
   print(p)
   ## save results
   save_plot(
@@ -2400,7 +2495,7 @@ for (i in seq_along(groups)) {
   ##---------------------------------------------------------------
   ##                  create fellaplot function                  --
   ##---------------------------------------------------------------
-  # fellaPlot <- function() {
+  fellaPlot <- function() {
   #   ## fella plot
     FELLA::plot(
       analysis,
@@ -2412,13 +2507,13 @@ for (i in seq_along(groups)) {
       vertex.label.degree = pi,
       rescale = TRUE
     )
-  # }
-  # cat(banner(paste0("enrichment plot for ",groups[i])))
-  # cat(
-  #   "\n```{r}\nfellaPlot()\n```\n",
-  #   file = tmpFellaFile,
-  #   append = TRUE
-  # )
+  }
+  cat(banner(paste0("enrichment plot for ",groups[i])))
+  cat(
+    "\n```{r}\nfellaPlot()\n```\n",
+    file = tmpFellaFile,
+    append = TRUE
+  )
   ##----------------------------------------------------------------
   ##                     generateResultsGraph                     --
   ##----------------------------------------------------------------
@@ -2432,7 +2527,7 @@ for (i in seq_along(groups)) {
   ## save graph
   svg(paste0("../results/nmf/networkPlot_", groups[i],".svg"), width = 15, height = 15)
   ## create plot function
-  # clpPlot <- function() {
+  clpPlot <- function() {
     plot(clp,
       unionGraphUndir,
       vertex.size = (V(unionGraphUndir)$input + 0.75) * 5,
@@ -2440,14 +2535,14 @@ for (i in seq_along(groups)) {
     )
     
   dev.off()
-  # }
-  # cat(banner(paste0("clp plot for ",groups[i])))
-  # cat(
-  #   "\n",
-  #   "\n```{r}\nclpPlot()\n```\n",
-  #   file = tmpClpFile,
-  #   append = TRUE
-  # )
+  }
+  cat(banner(paste0("clp plot for ",groups[i])))
+  cat(
+    "\n",
+    "\n```{r}\nclpPlot()\n```\n",
+    file = tmpClpFile,
+    append = TRUE
+  )
   ## obtain matrix properties
   hubscore <- hub.score(g)$vector
   authscore <- authority.score(g)$vector
@@ -2640,7 +2735,7 @@ for (i in seq_along(groups)) {
   ##---------------------------------------------------------------
   ##                  create fellaplot function                  --
   ##---------------------------------------------------------------
-  # fellaPlot <- function() {
+  fellaPlot <- function() {
   #   ## fella plot
     FELLA::plot(
       analysis,
@@ -2652,13 +2747,13 @@ for (i in seq_along(groups)) {
       vertex.label.degree = pi,
       rescale = TRUE
     )
-  # }
-  # cat(banner(paste0("enrichment plot for ",groups[i])))
-  # cat(
-  #   "\n```{r}\nfellaPlot()\n```\n",
-  #   file = tmpFellaFile,
-  #   append = TRUE
-  # )
+  }
+  cat(banner(paste0("enrichment plot for ",groups[i])))
+  cat(
+    "\n```{r}\nfellaPlot()\n```\n",
+    file = tmpFellaFile,
+    append = TRUE
+  )
   ##----------------------------------------------------------------
   ##                     generateResultsGraph                     --
   ##----------------------------------------------------------------
@@ -2672,7 +2767,7 @@ for (i in seq_along(groups)) {
   
   svg(paste0("../results/nmf/networkPlot_mp_", groups[i],".svg"), width = 15, height = 15)
   ## create plot function
-  # clpPlot <- function() {
+  clpPlot <- function() {
     plot(clp,
       unionGraphUndir,
       vertex.size = (V(unionGraphUndir)$input + 0.75) * 5,
@@ -2680,14 +2775,14 @@ for (i in seq_along(groups)) {
     )
     
   dev.off()
-  # }
-  # cat(banner(paste0("clp plot for ",groups[i])))
-  # cat(
-  #   "\n",
-  #   "\n```{r}\nclpPlot()\n```\n",
-  #   file = tmpClpFile,
-  #   append = TRUE
-  # )
+  }
+  cat(banner(paste0("clp plot for ",groups[i])))
+  cat(
+    "\n",
+    "\n```{r}\nclpPlot()\n```\n",
+    file = tmpClpFile,
+    append = TRUE
+  )
   ## obtain matrix properties
   hubscore <- hub.score(g)$vector
   authscore <- authority.score(g)$vector
