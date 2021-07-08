@@ -96,6 +96,7 @@ knitr::kable(table, "html", booktabs = TRUE,
   kableExtra::kable_styling(bootstrap_options = 
                   c("striped", "hover", "condensed", "responsive"), 
                 full_width = FALSE)
+
 ```
 
 # Pie chart
