@@ -984,6 +984,7 @@ for (program in seq_along(uniquePrograms)) {
 )
 }
 ```
+
 # feature extraction
 
 ## extracted features
@@ -1031,11 +1032,14 @@ for (i in 1:length(listTop)) {
     dpi = 300
   )
 }
-
+topMetdf <- data.frame()
 ## identified metabolites
 for (i in 1:length(metasetTop)) {
   name <- paste0("subtype", i)
   topMet <- metabolites[metasetTop[[i]]]
+  df <- as.data.frame(topMet)
+  colnames(df) <- name
+  topMetdf <- as.data.frame(append(topMetdf, df))
   ## panel metabolites
   panel <- gsub("^X", "", topMet)
   ## match
@@ -1047,6 +1051,8 @@ for (i in 1:length(metasetTop)) {
   banner(paste("Top identified metabolites in", name))
   print(panel)
 }
+write.csv(topMetdf, "../results/nmf/topMetabolitesperSubtype.csv",
+         row.names = FALSE)
 ```
 
 ## extracted features metabolic programs

@@ -191,6 +191,9 @@ expData <- expData %>%
 ## subset data for plasma measurements
 expData <- expData[expData$MATRIX %in% "Human Plasma",]
 
+## subset data for serum measurements
+expDataSerum <- expData[!expData$MATRIX %in% "Human Plasma",]
+expDataSerum <- expDataSerum[expDataSerum$Disease_short %in% "PDAC",]
 ## for comparison
 expDataOrg <- expData
 ##---------------------------------------------------------------
@@ -203,6 +206,9 @@ dir.create(file.path(paste0(here()), "results/preprocessedData")), FALSE)
 ##----------------------------------------------------------------
 saveRDS(expData, "../results/preprocessedData/expDataWithNAs.rds")
 dim(expData)
+## serum data
+saveRDS(expDataSerum, "../results/preprocessedData/expDataWithNAs_serum.rds")
+dim(expDataSerum)
 ##################################################################
 ##             remove metabolites with missing data             ##
 ##################################################################

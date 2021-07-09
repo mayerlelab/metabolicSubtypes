@@ -1,0 +1,247 @@
+---
+title: "META-PAC"
+subtitle: "__Rebuttal__"
+author: "_umahajan_"
+date:  "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+chooseCRANmirror(graphics = TRUE, ind = 1)
+knitr::opts_chunk$set(
+  tidy.opts = list(width.cutoff = 85),
+  tidy = TRUE,
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# load packages and datasets
+```{r packages}
+rm(list = ls())
+##---------------------------------------------------------------
+##                      required packages                      --
+##---------------------------------------------------------------
+scriptLibraries <-  c(
+  "here",
+  "tidyverse",
+  "ggplot2",
+  "ggpubr",
+  "rstatix",
+  "RColorBrewer",
+  "forcats",
+  "sjPlot"
+)
+##---------------------------------------------------------------
+##                      load functions                    --
+##---------------------------------------------------------------
+source("../functions/ImputeTransformScale.R")
+source("../functions/basicFunctions.R")
+source("~/r_functions/splitViolin.R")
+##---------------------------------------------------------------
+##                        load packages                        --
+##---------------------------------------------------------------
+installScriptLibs(scriptLibraries)
+##---------------------------------------------------------------
+##                    set working directory                    --
+##---------------------------------------------------------------
+here::here()
+##---------------------------------------------------------------
+##                   create result directory                   --
+##---------------------------------------------------------------
+ifelse(!dir.exists(file.path(paste0(here()), "results")),
+dir.create(file.path(paste0(here()), "results")), FALSE)
+##---------------------------------------------------------------
+##                    load metabolite names                    --
+##---------------------------------------------------------------
+metaboliteNames <- 
+  read.csv("../masterTable/masterTableMetaboliteNames.csv",
+           stringsAsFactors = FALSE)
+##----------------------------------------------------------------
+##                 create results/nmf directory                 --
+##----------------------------------------------------------------
+ifelse(!dir.exists(file.path(paste0(here()), "results/rebuttal")),
+       dir.create(file.path(paste0(here()), "results/rebuttal")), FALSE)
+##----------------------------------------------------------------
+##                         basic themes                         --
+##----------------------------------------------------------------
+ggplot_theme <- theme_classic() +
+  theme(
+    axis.line = element_line(size = 0.75),
+    axis.text = element_text(
+      size = 11,
+      face = "bold",
+      colour = "black"
+    ),
+    axis.title = element_text(size = 12, face = "bold")
+  )
+```
+
+## Comparison between Plasma and Serum Metabolome
+```{r data}
+##----------------------------------------------------------------
+##                  load top metabolites list                  --
+##----------------------------------------------------------------
+topMet <- read.csv("../results/nmf/topMetabolitesperSubtype.csv")
+topMet <- topMet[1:5, ]
+topMetList <- unlist(topMet)
+##----------------------------------------------------------------
+##                       load plasma data                       --
+##----------------------------------------------------------------
+plasmaData <-
+  readRDS("../results/preprocessedData/expDataWithoutNAs.rds")
+## subset data for plasma measurements
+plasmaData <- plasmaData[plasmaData$MATRIX %in% "Human Plasma", ]
+## subset data for PDAC
+plasmaData <- plasmaData[plasmaData$Disease_short %in% "PDAC", ]
+## select only ID phase
+plasmaData <- plasmaData[plasmaData$PROJECT_PHASE %in% "ID", ]
+##----------------------------------------------------------------
+##                   list unknown metabolites                   --
+##----------------------------------------------------------------
+unknownMetabolites <-
+  metaboliteNames[grepl("Unknown", metaboliteNames$METABOLITE_NAME),]
+unknownMetabolites <- na.omit(unknownMetabolites$ID)
+unknownMetabolites <- paste0("X", unknownMetabolites)
+print("columns with Unknown metabolite class")
+unknown <-
+  colnames(plasmaData)[colnames(plasmaData) %in% unknownMetabolites]
+length(unknown)
+##----------------------------------------------------------------
+##                  remove unknown metabolites                  --
+##----------------------------------------------------------------
+plasmaData  <-
+  plasmaData[,!colnames(plasmaData) %in% unknownMetabolites]
+## subset data for metabolites
+datMetplasmaData <-
+  plasmaData[, grepl(paste0(c("^X"), collapse = "|"),
+                     colnames(plasmaData))]
+##---------------------------------------------------------------
+##             ImputeTransformParetoscale function             --
+##---------------------------------------------------------------
+imputedDataplasmaData <-
+  ImputeTransformScale(
+    datMetplasmaData,
+    Impute = TRUE,
+    Scaling = TRUE,
+    Transform = TRUE,
+    ScaleType = "Range"
+  )
+## transpose data
+transImputedDataplasmaData <- t(imputedDataplasmaData)
+##----------------------------------------------------------------
+##                       load serum data                       --
+##----------------------------------------------------------------
+serumData <-
+  readRDS("../results/preprocessedData/expDataWithNAs.rds")
+## subset data for plasma measurements
+serumData <- serumData[serumData$MATRIX %in% "Human Serum", ]
+## subset data for PDAC
+serumData <- serumData[serumData$Disease_short %in% "PDAC", ]
+##----------------------------------------------------------------
+##                   list unknown metabolites                   --
+##----------------------------------------------------------------
+print("columns with Unknown metabolite class")
+unknown <-
+  colnames(serumData)[colnames(plasmaData) %in% unknownMetabolites]
+length(unknown)
+##----------------------------------------------------------------
+##                  remove unknown metabolites                  --
+##----------------------------------------------------------------
+serumData  <-
+  serumData[,!colnames(serumData) %in% unknownMetabolites]
+## subset data for metabolites
+datMetserumData <-
+  serumData[, grepl(paste0(c("^X"), collapse = "|"),
+                    colnames(serumData))]
+##---------------------------------------------------------------
+##             ImputeTransformParetoscale function             --
+##---------------------------------------------------------------
+## apply function
+imputedDataserumData <-
+  ImputeTransformScale(
+    datMetserumData,
+    Impute = TRUE,
+    Scaling = TRUE,
+    Transform = TRUE,
+    ScaleType = "Range"
+  )
+## transpose data
+transImputedDataserumData <- t(imputedDataserumData)
+##----------------------------------------------------------------
+##      subset plasma and serum data based on topMet list      --
+##----------------------------------------------------------------
+plasmaDataSubset <-
+  imputedDataplasmaData[, colnames(imputedDataplasmaData) %in% topMetList]
+plasmaDataSubset$Matrix <- "Plasma"
+serumDataSubset <-
+  imputedDataserumData[, colnames(imputedDataserumData) %in% topMetList]
+serumDataSubset$Matrix <- "Serum"
+## compiled data
+compiledData <- bind_rows(plasmaDataSubset, serumDataSubset)
+##----------------------------------------------------------------
+##                          plot data                          --
+##----------------------------------------------------------------
+## process data
+pdat <- gather(compiledData, key = variable, value = value,-Matrix)
+## relevel
+pdat <-
+  pdat[order(factor(pdat$variable, levels = unique(topMetList))), ]
+## assign metabolite names
+## match
+pdat$variable <- gsub("^X", "", pdat$variable)
+matchNames <- match(pdat$variable, metaboliteNames$ID, nomatch = 0)
+## metabolite names
+pdat$MetaboliteName[as.numeric(as.character(pdat$variable)) %in% as.numeric(as.character(metaboliteNames$ID))] <-
+  as.character(metaboliteNames$METABOLITE_NAME)[matchNames]
+
+## plot
+p <-
+  ggplot(pdat, 
+         aes(fct_inorder(MetaboliteName), 
+             value, 
+             fill = Matrix)) + 
+  splitViolin() + 
+  ggplot_theme +
+  geom_boxplot(
+    width = 0.25,
+    notch = FALSE,
+    notchwidth = .4,
+    outlier.shape = NA,
+    coef = 0,
+    show.legend = FALSE
+  ) +
+  theme(legend.position = "bottom",
+    axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1,
+    size = 2
+  )) +
+  xlab("") +
+  ylab("Normalized expression") +
+  stat_compare_means(aes(group = Matrix), label = "p.signif", paired = TRUE) +
+  scale_fill_manual(values = brewer.pal(2, "Set1")[1:2])
+## print
+p
+## save data
+save_plot(
+  fig = p,
+  width = 15,
+  height = 13,
+  "../results/rebuttal/serumANDplasmaComparison.svg",
+  dpi = 300
+)
+```
+
+# computing environment
+```{r session}
+sessionInfo()
+```
+
