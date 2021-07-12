@@ -3,7 +3,9 @@
 R scripts of the analysis.
 1. Data preprocessing
 2. NMF subtypes and pathaway analysis
-3. 
+3. clinical charactersitics
+4. TCGA analysis
+5. Rebuttal questions
 
 ## Abstract
 
