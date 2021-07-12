@@ -1,6 +1,9 @@
 # Plasma metabolome profiling identifies metabolic subtypes of pancreatic ductal adenocarcinoma
 
 R scripts of the analysis.
+1. Data preprocessing
+2. NMF subtypes and pathaway analysis
+3. 
 
 ## Abstract
 
