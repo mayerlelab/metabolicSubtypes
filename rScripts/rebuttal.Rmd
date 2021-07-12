@@ -133,8 +133,6 @@ imputedDataplasmaData <-
     Transform = TRUE,
     ScaleType = "Range"
   )
-## transpose data
-transImputedDataplasmaData <- t(imputedDataplasmaData)
 ##----------------------------------------------------------------
 ##                       load serum data                       --
 ##----------------------------------------------------------------
@@ -172,8 +170,6 @@ imputedDataserumData <-
     Transform = TRUE,
     ScaleType = "Range"
   )
-## transpose data
-transImputedDataserumData <- t(imputedDataserumData)
 ##----------------------------------------------------------------
 ##      subset plasma and serum data based on topMet list      --
 ##----------------------------------------------------------------
@@ -238,6 +234,376 @@ save_plot(
   "../results/rebuttal/serumANDplasmaComparison.svg",
   dpi = 300
 )
+```
+# comparison between PDAC vs CP.
+```{r}
+##----------------------------------------------------------------
+##                       load plasma data                       --
+##----------------------------------------------------------------
+plasmaData <-
+  readRDS("../results/preprocessedData/expDataWithoutNAs.rds")
+## subset data for plasma measurements
+plasmaData <- plasmaData[plasmaData$MATRIX %in% "Human Plasma", ]
+## subset data for PDAC
+plasmaData <- plasmaData[plasmaData$Disease_short %in% c("PDAC", "CP"), ]
+##----------------------------------------------------------------
+##                   list unknown metabolites                   --
+##----------------------------------------------------------------
+unknown <-
+  colnames(plasmaData)[colnames(plasmaData) %in% unknownMetabolites]
+length(unknown)
+##----------------------------------------------------------------
+##                  remove unknown metabolites                  --
+##----------------------------------------------------------------
+plasmaData  <-
+  plasmaData[,!colnames(plasmaData) %in% unknownMetabolites]
+## subset data for metabolites
+datMetplasmaData <-
+  plasmaData[, grepl(paste0(c("^X", "Disease_short"), collapse = "|"),
+                     colnames(plasmaData))]
+##---------------------------------------------------------------
+##             ImputeTransformParetoscale function             --
+##---------------------------------------------------------------
+imputedDataplasmaData <-
+  ImputeTransformScale(
+    datMetplasmaData,
+    dropList = "Disease_short",
+    Impute = TRUE,
+    Scaling = TRUE,
+    Transform = TRUE,
+    ScaleType = "Range"
+  )
+##----------------------------------------------------------------
+##      subset plasma and serum data based on topMet list      --
+##----------------------------------------------------------------
+plasmaDataSubset <-
+  imputedDataplasmaData[, colnames(imputedDataplasmaData) %in% c(topMetList, "Disease_short")]
+##----------------------------------------------------------------
+##                          plot data                          --
+##----------------------------------------------------------------
+## process data
+pdat <- gather(plasmaDataSubset, key = variable, value = value,-Disease_short)
+## relevel
+pdat <-
+  pdat[order(factor(pdat$variable, levels = unique(topMetList))), ]
+## assign metabolite names
+## match
+pdat$variable <- gsub("^X", "", pdat$variable)
+matchNames <- match(pdat$variable, metaboliteNames$ID, nomatch = 0)
+## metabolite names
+pdat$MetaboliteName[as.numeric(as.character(pdat$variable)) %in% as.numeric(as.character(metaboliteNames$ID))] <-
+  as.character(metaboliteNames$METABOLITE_NAME)[matchNames]
+
+## plot
+p <-
+  ggplot(pdat, 
+         aes(fct_inorder(MetaboliteName), 
+             value, 
+             fill = Disease_short)) + 
+  splitViolin() + 
+  ggplot_theme +
+  geom_boxplot(
+    width = 0.25,
+    notch = FALSE,
+    notchwidth = .4,
+    outlier.shape = NA,
+    coef = 0,
+    show.legend = FALSE
+  ) +
+  theme(legend.position = "bottom",
+    axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1,
+    size = 2
+  )) +
+  xlab("") +
+  ylab("Normalized expression") +
+  stat_compare_means(aes(group = Disease_short), label = "p.signif") +
+  scale_fill_manual(values = brewer.pal(2, "Set1")[1:2])
+## print
+p
+## save data
+save_plot(
+  fig = p,
+  width = 15,
+  height = 13,
+  "../results/rebuttal/PDACandCPComparison.svg",
+  dpi = 300
+)
+```
+
+# comparison between PDAC vs other cancers
+```{r}
+##----------------------------------------------------------------
+##                  load top metabolites list                  --
+##----------------------------------------------------------------
+plasmaData <-
+  readRDS("../results/preprocessedData/expDataWithoutNAs.rds")
+## subset data for plasma measurements
+plasmaData <- plasmaData[plasmaData$MATRIX %in% "Human Plasma", ]
+## subset data for PDAC
+pdacData <- plasmaData[plasmaData$Disease_short %in% "PDAC", ]
+## select only metabolites
+pdacData <-pdacData[, grepl(paste0(c("^X", "Disease_short"), collapse = "|"),
+                     colnames(pdacData))]
+
+## other cancers data
+othersData <- read.csv("../Data/breast_colon_cancer.csv")
+## rename column names 
+colnames(othersData)[colnames(othersData) %in% "ORGAN"] <- "Disease_short"
+## select only metabolites
+othersData <-othersData[, grepl(paste0(c("^X", "Disease_short"), collapse = "|"),
+                     colnames(othersData))]
+
+## merged data
+mergedData <- bind_rows(pdacData, othersData)
+##----------------------------------------------------------------
+##                   list unknown metabolites                   --
+##----------------------------------------------------------------
+unknown <-
+  colnames(mergedData)[colnames(mergedData) %in% unknownMetabolites]
+##----------------------------------------------------------------
+##                  remove unknown metabolites                  --
+##----------------------------------------------------------------
+mergedData  <-
+  mergedData[,!colnames(mergedData) %in% unknownMetabolites]
+## subset data for metabolites
+datMetmergedData <-
+  mergedData[, grepl(paste0(c("^X", "Disease_short"), collapse = "|"),
+                     colnames(mergedData))]
+##---------------------------------------------------------------
+##             ImputeTransformParetoscale function             --
+##---------------------------------------------------------------
+imputedDatamergedData <-
+  ImputeTransformScale(
+    datMetmergedData,
+    dropList = "Disease_short",
+    Impute = TRUE,
+    Scaling = TRUE,
+    Transform = TRUE,
+    ScaleType = "Range"
+  )
+##----------------------------------------------------------------
+##      subset plasma and serum data based on topMet list      --
+##----------------------------------------------------------------
+mergedDataSubset <-
+  imputedDatamergedData[, colnames(imputedDatamergedData) %in% c(topMetList, "Disease_short")]
+##----------------------------------------------------------------
+##                          plot data                          --
+##----------------------------------------------------------------
+## process data
+pdat <- gather(mergedDataSubset, key = variable, value = value,-Disease_short)
+## relevel
+pdat <-
+  pdat[order(factor(pdat$variable, levels = unique(topMetList))), ]
+## assign metabolite names
+## match
+pdat$variable <- gsub("^X", "", pdat$variable)
+matchNames <- match(pdat$variable, metaboliteNames$ID, nomatch = 0)
+## metabolite names
+pdat$MetaboliteName[as.numeric(as.character(pdat$variable)) %in% as.numeric(as.character(metaboliteNames$ID))] <-
+  as.character(metaboliteNames$METABOLITE_NAME)[matchNames]
+pdat$variable <- paste0("X", pdat$variable)
+
+pdat <- pdat %>%
+  group_by(Disease_short, variable, MetaboliteName) %>%
+  summarise(Distribution=median(value),
+            sd = sd(value)) %>%
+  arrange(sapply(variable, function(y) which(y == topMetList)))
+
+pdat$Distribution[pdat$sd == 0] <- 0
+
+
+p <- ggballoonplot(pdat, x = "Disease_short",
+              y = "variable",
+              size= "Distribution",
+              fill= "Distribution") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      size = 11,
+      face = "bold",
+      colour = "black"
+    ),
+    axis.text.y = element_text(
+      size = 3,
+      colour = "black"
+    ),
+    axis.title = element_text(size = 12, face = "bold")
+  ) +
+scale_fill_gradient2(low = "#377EB8",mid = "white", high = "#E41A1C", midpoint = 0.15)
+
+p
+
+## save data
+save_plot(
+  fig = p,
+  width = 12,
+  height = 12,
+  "../results/rebuttal/PDACandOther_cancers.svg",
+  dpi = 300
+)
+```
+
+# comparison between PDAC vs DM : stratification
+```{r}
+##----------------------------------------------------------------
+##                  load top metabolites list                  --
+##----------------------------------------------------------------
+plasmaData <-
+  readRDS("../results/preprocessedData/expDataWithoutNAs.rds")
+## subset data for plasma measurements
+plasmaData <- plasmaData[plasmaData$MATRIX %in% "Human Plasma", ]
+## subset data for PDAC
+plasmaData <- plasmaData[plasmaData$Disease_short %in% "PDAC", ]
+plasmaData$DIABETES <- gsub("ja", "Ja", plasmaData$DIABETES)
+plasmaData$DIABETES <- gsub("nein", "Nein", plasmaData$DIABETES)
+rownames(plasmaData) <- c()
+## save diabetes data with IDs
+diabetes <- plasmaData[, colnames(plasmaData) %in% c("SAMPLE_ID", "DIABETES")] %>%
+  column_to_rownames("SAMPLE_ID")
+## select only metabolites
+plasmaData <-plasmaData[, grepl(paste0(c("^X", "DIABETES"), collapse = "|"),
+                     colnames(plasmaData))]
+##----------------------------------------------------------------
+##                   list unknown metabolites                   --
+##----------------------------------------------------------------
+unknown <-
+  colnames(plasmaData)[colnames(plasmaData) %in% unknownMetabolites]
+length(unknown)
+##----------------------------------------------------------------
+##                  remove unknown metabolites                  --
+##----------------------------------------------------------------
+plasmaData  <-
+  plasmaData[,!colnames(plasmaData) %in% unknownMetabolites]
+## subset data for metabolites
+datMetplasmaData <-
+  plasmaData[, grepl(paste0(c("^X", "DIABETES"), collapse = "|"),
+                     colnames(plasmaData))]
+##---------------------------------------------------------------
+##             ImputeTransformParetoscale function             --
+##---------------------------------------------------------------
+imputedDataplasmaData <-
+  ImputeTransformScale(
+    datMetplasmaData,
+    dropList = "DIABETES",
+    Impute = TRUE,
+    Scaling = TRUE,
+    Transform = TRUE,
+    ScaleType = "Range"
+  )
+#----------------------------------------------------------------
+##      subset plasma and serum data based on topMet list      --
+##----------------------------------------------------------------
+plasmaDataSubset <-
+  imputedDataplasmaData[, colnames(imputedDataplasmaData) %in% c(topMetList, "DIABETES")]
+##----------------------------------------------------------------
+##                          plot data                          --
+##----------------------------------------------------------------
+## process data
+pdat <- gather(plasmaDataSubset, key = variable, value = value,-DIABETES)
+## relevel
+pdat <-
+  pdat[order(factor(pdat$variable, levels = unique(topMetList))), ]
+## assign metabolite names
+## match
+pdat$variable <- gsub("^X", "", pdat$variable)
+matchNames <- match(pdat$variable, metaboliteNames$ID, nomatch = 0)
+## metabolite names
+pdat$MetaboliteName[as.numeric(as.character(pdat$variable)) %in% as.numeric(as.character(metaboliteNames$ID))] <-
+  as.character(metaboliteNames$METABOLITE_NAME)[matchNames]
+
+## plot
+p <-
+  ggplot(pdat, 
+         aes(fct_inorder(MetaboliteName), 
+             value, 
+             fill = DIABETES)) + 
+  splitViolin() + 
+  ggplot_theme +
+  geom_boxplot(
+    width = 0.25,
+    notch = FALSE,
+    notchwidth = .4,
+    outlier.shape = NA,
+    coef = 0,
+    show.legend = FALSE
+  ) +
+  theme(legend.position = "bottom",
+    axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1,
+    size = 2
+  )) +
+  xlab("") +
+  ylab("Normalized expression") +
+  stat_compare_means(aes(group = DIABETES), label = "p.signif") +
+  scale_fill_manual(values = brewer.pal(2, "Set1")[1:2])
+## print
+p
+## save data
+save_plot(
+  fig = p,
+  width = 15,
+  height = 13,
+  "../results/rebuttal/PDACwithAND withoutDM.svg",
+  dpi = 300
+)
+```
+
+# comparison between PDAC vs DM : stratification per subtype
+```{r}
+##----------------------------------------------------------------
+##                  load top metabolites list                  --
+##----------------------------------------------------------------
+plasmaData <-
+  read.csv("../results/nmf/imputedData.csv") %>%
+  column_to_rownames("X")
+
+# merge data with diabetes
+plasmaData <- merge(plasmaData, diabetes, by =0)
+#----------------------------------------------------------------
+##      subset plasma and serum data based on topMet list      --
+##----------------------------------------------------------------
+plasmaDataSubset <-
+  plasmaData[, colnames(plasmaData) %in% c(topMetList, "Subtypes", "DIABETES")]
+##----------------------------------------------------------------
+##                          plot data                          --
+##----------------------------------------------------------------
+## process data
+pdat <- gather(plasmaDataSubset, key = variable, value = value,-c(Subtypes, DIABETES))
+
+## plot
+## set colors
+colorSubtypes <- brewer.pal(length(topMet), "Set1")
+
+for (i in 1:length(topMet)) {
+  name <- names(topMet)[i]
+  # subset
+  subsetData <- pdat[pdat$variable %in% topMet[[i]],]
+  # plot
+  p <- subsetData %>% 
+    ggplot(aes(Subtypes, value, group=DIABETES)) + 
+    geom_point(stat = "summary",
+    size = 5, shape = 21, aes(group = DIABETES), fill = colorSubtypes[i], color="black") + 
+    geom_line(stat = "summary", size = 1.5, aes(linetype = DIABETES), alpha = 0.5, 
+              color = colorSubtypes[i]) + 
+    ggplot_theme + 
+    xlab("") + 
+    ylab("Relative abundance") +
+    theme(legend.position = "none")
+  # print
+  print(p)
+  save_plot(
+    paste("../results/rebuttal/extractedfeatures_", name, ".svg", sep=""),
+    fig = p,
+    width = 9,
+    height = 7,
+    dpi = 300
+  )
+}
 ```
 
 # computing environment
